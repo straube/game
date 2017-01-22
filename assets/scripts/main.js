@@ -1,153 +1,239 @@
-jQuery(function ($) {
+var Game = (function ($, doc, win) {
 
     'use strict';
 
-    var offset = 30;
-    var level = 1;
-
-    var Canvas = function (selector) {
+    var Game = function (selector) {
+        this.level = 1;
         this.$node = $(selector);
-        this.width = this.$node.width();
-        this.height = this.$node.height();
-        this.player = null;
-        this.throwing = null;
-        this.attachEvents();
-        this.initScene();
+        this.addCanvas();
+        this.addPlayer();
+        this.addBalls();
+        this.bindControls();
+        this.loop();
     };
 
-    Canvas.prototype.attachEvents = function () {
-        var self = this;
-        $(window).on('resize', function () {
-            self.width = self.$node.width();
-            self.height = self.$node.height();
-        });
-        $(document).on('click', '#restart', function (event) {
-            event.preventDefault();
-            window.location.reload();
-        });
+    Game.NODE_PREFIX = 'game-';
+
+    Game.DIRECTION_RIGHT = 1;
+
+    Game.DIRECTION_LEFT = -1;
+
+    Game.prototype.addCanvas = function () {
+        this.canvas = new Canvas();
+        this.canvas.render(this.$node);
     };
 
-    Canvas.prototype.initScene = function () {
-        var self = this;
-        self.balls = [];
-        for (var i = 0; i < level; i++) {
-            var ball = new Ball(self);
-            self.balls.push(ball);
+    Game.prototype.addPlayer = function () {
+        this.player = new Player();
+        this.player.render(this.canvas.$node);
+        if (this.canvas) {
+            var x = this.canvas.gridSize;
+            var y = this.canvas.height - this.player.height - this.canvas.gridSize;
+            this.player.moveTo(x, y);
         }
-        self.throwing = window.setInterval(function () {
+    };
+
+    Game.prototype.addBalls = function () {
+        this.balls = [];
+        for (var i = 0; i < this.level; i++) {
+            var ball = new Ball(i);
+            ball.render(this.canvas.$node);
+            this.balls.push(ball);
+        }
+    };
+
+    Game.prototype.removeBall = function (index) {
+        var ball = this.balls[index];
+        this.balls.splice(index, 1);
+        ball.$node.remove();
+    };
+
+    Game.prototype.bindControls = function () {
+        var self = this;
+        $(doc).on('keydown', function (event) {
+            switch (event.which) {
+            case 38: // Up
+                self.player.jump(self.canvas.gridSize * 2);
+                break;
+            case 39: // Right
+                self.player.moveRight(self.canvas.gridSize);
+                break;
+            case 37: // Left
+                self.player.moveLeft(self.canvas.gridSize);
+                break;
+            }
+            self.catchBalls();
+        });
+    };
+
+    Game.prototype.loop = function () {
+        var self = this;
+        self.looping = win.setInterval(function () {
             self.balls.forEach(function (ball) {
-                ball.throw();
+                var x = Math.round(Math.random() * self.canvas.width);
+                var y = self.canvas.height - Math.round(Math.random() * 100) - self.canvas.gridSize;
+                ball.moveTo(x, y);
             });
+            self.catchBalls();
         }, 1000);
     };
 
-    var Ball = function (canvas) {
-        this.canvas = canvas;
-        this.$node = $('<span class="ball"></span>');
-        this.x = 0;
-        this.y = 0;
-        this.canvas.$node.append(this.$node);
-        this.width = this.$node.width();
-        this.height = this.$node.height();
-    };
-
-    Ball.prototype.throw = function () {
-        this.x = Math.round(Math.random() * this.canvas.width);
-        this.y = this.canvas.height - Math.round(Math.random() * 100) - offset;
-        this._move();
-        this.catch();
-    };
-
-    Ball.prototype.catch = function () {
+    Game.prototype.catchBalls = function () {
         var self = this;
-        var player = self.canvas.player;
-        if (!self.canvas.throwing) {
-            return;
-        }
-        if (self.x > player.x && self.x + self.width < player.x + player.width && self.y > player.y && self.y + self.height < player.y + player.height) {
-            window.clearInterval(self.canvas.throwing);
-            self.canvas.throwing = null;
-            window.setTimeout(function () {
-                self.canvas.$node.append('<div id="yay">Yay! You catched it!!!</div>');
-            });
-        }
-    };
-
-    Ball.prototype._move = function () {
-        this.$node.css('transform', 'translate(' + this.x + 'px, ' + this.y + 'px)');
-    };
-
-    var Player = function (canvas, selector) {
-        this.canvas = canvas;
-        this.canvas.player = this;
-        this.$node = $(selector);
-        this.width = this.$node.width();
-        this.height = this.$node.height();
-        this.x = offset;
-        this.y = this.canvas.height - this.height - offset;
-        this._move();
-        this.jumping = false;
-        this.attachEvents();
-    };
-
-    Player.prototype.attachEvents = function () {
-        var self = this;
-        $(document).on('keydown', function (event) {
-            switch (event.which) {
-            case 38: // Up
-                self.jump();
-                break;
-            case 39: // Right
-                self.walkRight();
-                break;
-            case 37: // Left
-                self.walkLeft();
-                break;
+        for (var i = self.balls.length; --i >= 0;) {
+            var ball = self.balls[i];
+            if (ball.wasCaught(self.player)) {
+                self.removeBall(i);
+                if (self.balls.length === 0) {
+                    win.clearInterval(self.looping);
+                    self.looping = null;
+                    self.showMessage('Yay! You caught them all!!!');
+                    win.setTimeout(function () {
+                        self.nextLevel();
+                    }, 2000);
+                }
             }
+        }
+    };
+
+    Game.prototype.nextLevel = function () {
+        this.level++;
+        this.showMessage('Level ' + this.level);
+        this.addBalls();
+        this.loop();
+    };
+
+    Game.prototype.showMessage = function (text) {
+        var self = this;
+        var message = new Message(text);
+        message.render(self.canvas.$node);
+        win.setTimeout(function () {
+            message.$node.remove();
+        }, 10000);
+    };
+
+    var Shape = function () {
+        this.$node = null;
+        this.width = null;
+        this.height = null;
+    };
+
+    Shape.prototype.render = function ($container) {
+        $container.append(this.$node);
+        this.width = this.$node.width();
+        this.height = this.$node.height();
+    };
+
+    Shape.prototype.moveTo = function (x, y) {
+        this.x = x;
+        this.y = y;
+        if (this.$node) {
+            this.$node.css('transform', 'translate(' + this.x + 'px,' + this.y + 'px)');
+        }
+    };
+
+    var Canvas = function () {
+        this.$node = $(doc.createElement('div'));
+        this.$node.attr('id', Game.NODE_PREFIX + 'canvas');
+        this.bindControls();
+        this.width = null;
+        this.height = null;
+        this.gridSize = 30;
+    };
+
+    Canvas.prototype = new Shape();
+
+    Canvas.prototype.render = function ($container) {
+        Shape.prototype.render.call(this, $container);
+        this.gridSize = this.width / 50;
+    };
+
+    Canvas.prototype.bindControls = function () {
+        var self = this;
+        self.$restart = $(doc.createElement('a'));
+        self.$restart.attr({
+            id: Game.NODE_PREFIX + 'restart',
+            href: '#'
+        });
+        self.$restart.text('Restart');
+        self.$node.append(self.$restart);
+        $(doc).on('click', function (event) {
+            if (event.target !== self.$restart.get(0)) {
+                return;
+            }
+            event.preventDefault();
+            win.location.reload();
         });
     };
 
-    Player.prototype.jump = function () {
+    var Player = function () {
+        this.$node = $(doc.createElement('div'));
+        this.$node.attr('id', Game.NODE_PREFIX + 'player');
+        this.x = 0;
+        this.y = 0;
+        this.width = null;
+        this.height = null;
+    };
+
+    Player.prototype = new Shape();
+
+    Player.prototype.jump = function (size) {
         var self = this;
         if (!self.jumping) {
             self.jumping = true;
-            self.y -= (offset * 2);
-            self._move();
-            window.setTimeout(function () {
-                self.y += (offset * 2);
-                self._move();
-                window.setTimeout(function () {
-                    self.jumping = false;
-                }, 500);
+            var x = self.x;
+            var y = self.y - size;
+            self.moveTo(x, y);
+            win.setTimeout(function () {
+                var x = self.x;
+                var y = self.y + size;
+                self.moveTo(x, y);
+                self.jumping = false;
             }, 500);
         }
     };
 
-    Player.prototype.walkRight = function () {
-        return this.walk(1);
+    Player.prototype.moveRight = function (size) {
+        this.move(Game.DIRECTION_RIGHT, size);
     };
 
-    Player.prototype.walkLeft = function () {
-        return this.walk(-1);
+    Player.prototype.moveLeft = function (size) {
+        this.move(Game.DIRECTION_LEFT, size);
     };
 
-    Player.prototype.walk = function (direction) {
-        var x = this.x + (direction * offset);
-        if (x >= offset && x + this.width <= this.canvas.width - offset) {
-            this.x = x;
-        }
-        this._move();
+    Player.prototype.move = function (direction, size) {
+        var x = this.x + (direction * size);
+        var y = this.y;
+        this.moveTo(x, y);
     };
 
-    Player.prototype._move = function () {
-        var self = this;
-        self.$node.css('transform', 'translate(' + self.x + 'px, ' + self.y + 'px)');
-        self.canvas.balls.forEach(function (ball) {
-            ball.catch();
-        });
+    var Ball = function (id) {
+        this.$node = $(doc.createElement('div'));
+        this.$node.attr('id', Game.NODE_PREFIX + 'ball-' + id.toString());
+        this.$node.addClass(Game.NODE_PREFIX + 'ball');
+        this.x = 0;
+        this.y = 0;
+        this.width = null;
+        this.height = null;
     };
 
-    var canvas = new Canvas('#canvas');
-    var pocoyo = new Player(canvas, '#pocoyo');
+    Ball.prototype = new Shape();
 
-});
+    Ball.prototype.wasCaught = function (player) {
+        return this.x > player.x && this.x + this.width < player.x + player.width && 
+            this.y > player.y && this.y + this.height < player.y + player.height;
+    };
+
+    var Message = function (text) {
+        this.$node = $(doc.createElement('div'));
+        this.$node.attr('id', Game.NODE_PREFIX + 'message');
+        this.$node.text(text);
+    };
+
+    Message.prototype = new Shape();
+
+    return Game;
+
+})(jQuery, document, window);
+
+window.Game = Game;
