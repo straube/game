@@ -19,7 +19,7 @@ body {
     position: absolute;
     width: 100px;
     height: 110px;
-    background: rgba(255, 0, 0, .5) url('../images/pocoyo.png') no-repeat;
+    background: url('../images/pocoyo.png') no-repeat;
     background-size: 100%;
     transition: transform .5s;
 }
