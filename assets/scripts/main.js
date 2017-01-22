@@ -3,13 +3,12 @@ var Game = (function ($, doc, win) {
     'use strict';
 
     var Game = function (selector) {
-        this.level = 1;
+        this.level = 0;
         this.$node = $(selector);
         this.addCanvas();
         this.addPlayer();
-        this.addBalls();
         this.bindControls();
-        this.loop();
+        this.nextLevel();
     };
 
     Game.NODE_PREFIX = 'game-';
@@ -17,6 +16,12 @@ var Game = (function ($, doc, win) {
     Game.DIRECTION_RIGHT = 1;
 
     Game.DIRECTION_LEFT = -1;
+
+    Game.waitForTransition = function (callback) {
+        win.setTimeout(function () {
+            callback();
+        }, 510);
+    };
 
     Game.prototype.addCanvas = function () {
         this.canvas = new Canvas();
@@ -45,7 +50,9 @@ var Game = (function ($, doc, win) {
     Game.prototype.removeBall = function (index) {
         var ball = this.balls[index];
         this.balls.splice(index, 1);
-        ball.$node.remove();
+        Game.waitForTransition(function () {
+            ball.$node.remove();
+        });
     };
 
     Game.prototype.bindControls = function () {
@@ -56,10 +63,14 @@ var Game = (function ($, doc, win) {
                 self.player.jump(self.canvas.gridSize * 2);
                 break;
             case 39: // Right
-                self.player.moveRight(self.canvas.gridSize);
+                if (self.player.x + self.player.width < self.canvas.width - self.canvas.gridSize) {
+                    self.player.moveRight(self.canvas.gridSize);
+                }
                 break;
             case 37: // Left
-                self.player.moveLeft(self.canvas.gridSize);
+                if (self.player.x > self.canvas.gridSize) {
+                    self.player.moveLeft(self.canvas.gridSize);
+                }
                 break;
             }
             self.catchBalls();
@@ -70,8 +81,11 @@ var Game = (function ($, doc, win) {
         var self = this;
         self.looping = win.setInterval(function () {
             self.balls.forEach(function (ball) {
-                var x = Math.round(Math.random() * self.canvas.width);
-                var y = self.canvas.height - Math.round(Math.random() * 100) - self.canvas.gridSize;
+                var x;
+                do {
+                    x = Math.round(Math.random() * (self.canvas.gridSteps - 2)) * self.canvas.gridSize + self.canvas.gridSize;
+                } while (Math.abs(x - self.player.x) < self.canvas.gridSize * 3);
+                var y = self.canvas.height - self.canvas.gridSize - 75;
                 ball.moveTo(x, y);
             });
             self.catchBalls();
@@ -87,10 +101,12 @@ var Game = (function ($, doc, win) {
                 if (self.balls.length === 0) {
                     win.clearInterval(self.looping);
                     self.looping = null;
-                    self.showMessage('Yay! You caught them all!!!');
+                    Game.waitForTransition(function () {
+                        self.showMessage('Yay! You caught them all!!!');
+                    });
                     win.setTimeout(function () {
                         self.nextLevel();
-                    }, 2000);
+                    }, 4010);
                 }
             }
         }
@@ -109,7 +125,7 @@ var Game = (function ($, doc, win) {
         message.render(self.canvas.$node);
         win.setTimeout(function () {
             message.$node.remove();
-        }, 10000);
+        }, 3500);
     };
 
     var Shape = function () {
@@ -139,13 +155,14 @@ var Game = (function ($, doc, win) {
         this.width = null;
         this.height = null;
         this.gridSize = 30;
+        this.gridSteps = 50;
     };
 
     Canvas.prototype = new Shape();
 
     Canvas.prototype.render = function ($container) {
         Shape.prototype.render.call(this, $container);
-        this.gridSize = this.width / 50;
+        this.gridSize = this.width / this.gridSteps;
     };
 
     Canvas.prototype.bindControls = function () {
@@ -184,12 +201,14 @@ var Game = (function ($, doc, win) {
             var x = self.x;
             var y = self.y - size;
             self.moveTo(x, y);
-            win.setTimeout(function () {
+            Game.waitForTransition(function () {
                 var x = self.x;
                 var y = self.y + size;
                 self.moveTo(x, y);
-                self.jumping = false;
-            }, 500);
+                Game.waitForTransition(function () {
+                    self.jumping = false;
+                });
+            });
         }
     };
 
@@ -218,6 +237,11 @@ var Game = (function ($, doc, win) {
     };
 
     Ball.prototype = new Shape();
+
+    Ball.prototype.moveTo = function (x, y) {
+        Shape.prototype.moveTo.call(this, x, y);
+        this.$node.css('opacity', 1);
+    };
 
     Ball.prototype.wasCaught = function (player) {
         return this.x > player.x && this.x + this.width < player.x + player.width && 
