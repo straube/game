@@ -1,4 +1,4 @@
-var Game = (function ($, doc, win) {
+(function ($, doc, win) {
 
     'use strict';
 
@@ -256,8 +256,6 @@ var Game = (function ($, doc, win) {
 
     Message.prototype = new Shape();
 
-    return Game;
+    win.Game = Game;
 
 })(jQuery, document, window);
-
-window.Game = Game;
